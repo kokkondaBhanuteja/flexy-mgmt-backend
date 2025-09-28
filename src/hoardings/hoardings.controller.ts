@@ -43,7 +43,7 @@ export class HoardingsController {
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 8 }), // MAX-8MB
           // Corrected
-          new FileTypeValidator({ fileType: /image\/(jpeg|png|webp|heic|jpg)/i }),
+         new FileTypeValidator({ fileType: /^image\//i }),
         ],
       }),
     )
@@ -111,7 +111,7 @@ export class HoardingsController {
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 4 }), // 4MB
           // Corrected
-          new FileTypeValidator({ fileType: /image\/(jpeg|png|jpg)/i }),
+         new FileTypeValidator({ fileType: /^image\//i }),
         ],
         fileIsRequired: false,
       }),
