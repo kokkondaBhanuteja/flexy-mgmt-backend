@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 
@@ -8,14 +8,25 @@ export class S3Service {
     private readonly bucketName: string;
 
     constructor(private readonly configService: ConfigService) {
+        const region = this.configService.get<string>('AWS_REGION');
+        const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
+        const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+        const bucketName = this.configService.get<string>('AWS_S3_BUCKET_NAME');
+
+        // This check ensures that the app will fail to start if the required env vars are missing.
+        if (!region || !accessKeyId || !secretAccessKey || !bucketName) {
+            throw new InternalServerErrorException('Missing AWS S3 configuration.');
+        }
+
         this.s3 = new S3Client({
-            region: this.configService.get<string>('AWS_REGION'),
+            region: region,
             credentials: {
-                accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID'),
-                secretAccessKey: this.configService.get<string>('AWS_SECRET_ACCESS_KEY'),
+                accessKeyId: accessKeyId,
+                secretAccessKey: secretAccessKey,
             },
         });
-        this.bucketName = this.configService.get<string>('AWS_S3_BUCKET_NAME');
+
+        this.bucketName = bucketName;
     }
 
     async uploadImage(file: Express.Multer.File): Promise<{ Location: string; Key: string }> {
@@ -25,7 +36,6 @@ export class S3Service {
             Key: key,
             Body: file.buffer,
             ContentType: file.mimetype,
-            ACL: 'public-read',
         });
 
         await this.s3.send(command);

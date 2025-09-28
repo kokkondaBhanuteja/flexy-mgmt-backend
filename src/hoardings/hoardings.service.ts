@@ -2,11 +2,10 @@ import {
   Injectable,
   InternalServerErrorException,
   BadRequestException,
-  Logger,
   NotFoundException,
   Inject,
 } from '@nestjs/common';
-import type { LoggerService } from '@nestjs/common';
+import { Logger } from 'winston';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection } from 'mongoose';
 import { CreateHoardingDto } from './dto/create-hoarding.dto';
@@ -16,11 +15,13 @@ import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { FindInBetweenDto } from './dto/find-in-between.dto';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { S3Service } from 'src/s3/s3.service';
+import { GeoJsonType } from './dto/geojson-type.enum';
+type UpdatePayload = Partial<Hoarding> & { coordinates?: [number, number] };
 
 @Injectable()
 export class HoardingsService {
   constructor(
-    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: LoggerService,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
     @InjectModel(Hoarding.name) private readonly hoardingModel: Model<Hoarding>,
     private readonly s3Service: S3Service, // Inject S3Service
     @InjectConnection() private readonly connection: Connection,
@@ -31,20 +32,20 @@ export class HoardingsService {
   ): Promise<Hoarding> {
     const context = 'HoardingsService';
     const session = await this.connection.startSession();
-    this.logger.log('START: Mongoose session started.', context);
+    this.logger.info('START: Mongoose session started.', context);
 
     session.startTransaction();
-    this.logger.log('STEP 1: Transaction initiated.', context);
+    this.logger.info('STEP 1: Transaction initiated.', context);
 
     try {
       const finalDto = { ...createHoardingDto };
 
-      this.logger.log('STEP 2: Attempting image upload to S3.', context);
+      this.logger.info('STEP 2: Attempting image upload to S3.', context);
 
       // --- CHANGE FOR S3 ---
       const uploadResult = await this.s3Service.uploadImage(image);
 
-      this.logger.log(`STEP 3: S3 upload successful. Key: ${uploadResult.Key}`, context);
+      this.logger.info(`STEP 3: S3 upload successful. Key: ${uploadResult.Key}`, context);
 
       if (!uploadResult.Location) {
         throw new InternalServerErrorException('Image upload failed.');
@@ -61,14 +62,14 @@ export class HoardingsService {
         },
       });
 
-      this.logger.log('STEP 4: Saving new hoarding document to MongoDB.', context);
+      this.logger.info('STEP 4: Saving new hoarding document to MongoDB.', context);
 
       const savedHoarding = await newHoarding.save({ session });
 
-      this.logger.log('STEP 5: Document saved. Committing transaction.', context);
+      this.logger.info('STEP 5: Document saved. Committing transaction.', context);
 
       await session.commitTransaction();
-      this.logger.log(`END: Transaction committed successfully for ID: ${savedHoarding._id}`, context);
+      this.logger.info(`END: Transaction committed successfully for ID: ${savedHoarding._id}`, context);
       return savedHoarding;
     } catch (error) {
       await session.abortTransaction();
@@ -81,16 +82,16 @@ export class HoardingsService {
       throw new InternalServerErrorException('Could not create hoarding.');
     } finally {
       session.endSession();
-      this.logger.log('FINAL: Mongoose session ended.', context);
+      this.logger.info('FINAL: Mongoose session ended.', context);
     }
   }
 
   async fetchAllLocations(){
-    const hoarding = await this.hoardingModel.find().exec();
-    if (!hoarding) {
+    const data = await this.hoardingModel.find().exec();
+    if (!data) {
       throw new NotFoundException(`Hoardings not found`);
     }
-    return hoarding; 
+    return data; 
   }
   
   async findAll(search?: string, page: number = 1, limit: number = 5): Promise<{ data: Hoarding[], total: number }> {
@@ -149,47 +150,70 @@ export class HoardingsService {
   }
 
 
-  async update(
+ async update(
     id: string,
     updateHoardingDto: UpdateHoardingDto,
     image?: Express.Multer.File,
   ): Promise<Hoarding> {
+    const context = `HoardingsService - update(id: ${id})`;
     const session = await this.connection.startSession();
     session.startTransaction();
 
     try {
       const hoarding = await this.hoardingModel.findById(id).session(session);
-      if (!hoarding) throw new NotFoundException(`Hoarding with ID "${id}" not found`);
+      if (!hoarding) {
+        throw new NotFoundException(`Hoarding with ID "${id}" not found`);
+      }
 
-      const updatePayload: Partial<Hoarding> = { ...updateHoardingDto };
+      // --- THE FIX: Build the payload object step-by-step ---
+      // Start with the properties from the DTO. This is type-safe.
+      const updatePayload: UpdatePayload = { ...updateHoardingDto };
 
+      // 1. Handle Location Transformation
+      if (updateHoardingDto.coordinates) {
+        this.logger.info('New coordinates provided. Transforming to location object.', { context });
+        updatePayload.location = {
+          type: GeoJsonType.Point,
+          coordinates: updateHoardingDto.coordinates,
+        };
+        // Remove the original 'coordinates' property to keep the payload clean.
+        delete updatePayload.coordinates;
+      }
+
+      // 2. Handle Image Upload
       if (image) {
+        this.logger.info('New image provided. Processing upload.', { context });
         if (hoarding.publicId) {
-          // The publicId is now the S3 Key
           await this.s3Service.deleteImage(hoarding.publicId);
         }
-        // --- CHANGE FOR S3 ---
         const uploadResult = await this.s3Service.uploadImage(image);
-        if (!uploadResult.Location) throw new InternalServerErrorException('Image upload failed.');
-
-        // --- CHANGE FOR S3 ---
-        updatePayload.imageUrl = uploadResult.Location; // Use Location for the full URL
-        updatePayload.publicId = uploadResult.Key;      // Use Key for the object identifier
+        if (!uploadResult.Location) {
+          throw new InternalServerErrorException('Image upload failed.');
+        }
+        // Add the new image properties to the payload.
+        updatePayload.imageUrl = uploadResult.Location;
+        updatePayload.publicId = uploadResult.Key;
       }
+      // --- END OF FIX ---
 
       const updatedHoarding = await this.hoardingModel.findByIdAndUpdate(
         id,
-        updatePayload,
+        { $set: updatePayload }, // Use $set for a more robust update
         { new: true, session },
       );
-      if (!updatedHoarding) throw new NotFoundException(`Hoarding with ID "${id}" not found during update`);
+      if (!updatedHoarding) {
+        throw new NotFoundException(`Hoarding with ID "${id}" not found during update`);
+      }
 
       await session.commitTransaction();
+      this.logger.info(`Transaction committed successfully.`, { context });
       return updatedHoarding;
+
     } catch (error) {
       await session.abortTransaction();
-      this.logger.error(`Transaction failed for hoarding update.`, error.stack);
+      this.logger.error(`Transaction failed and was aborted.`, { error: error.stack, context });
       throw new InternalServerErrorException('Could not update hoarding.');
+
     } finally {
       session.endSession();
     }
