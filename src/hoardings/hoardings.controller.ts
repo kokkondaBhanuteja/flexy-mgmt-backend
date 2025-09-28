@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator, HttpCode, HttpStatus, NotFoundException, Query, DefaultValuePipe, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator, HttpCode, HttpStatus, NotFoundException, Query, DefaultValuePipe, ParseIntPipe, BadRequestException } from '@nestjs/common';
 import { HoardingsService } from './hoardings.service';
 import { CreateHoardingDto } from './dto/create-hoarding.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -42,12 +42,16 @@ export class HoardingsController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 8 }), // MAX-8MB
-          new FileTypeValidator({ fileType: /jpg|jpeg|png|webp|heic/ }),
         ],
+        fileIsRequired: true,
       }),
     )
     image: Express.Multer.File,
   ) {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+    if (!allowedMimeTypes.includes(image.mimetype)) {
+      throw new BadRequestException(`Validation failed: Invalid file type. Only JPG, PNG, WEBP, and HEIC are allowed.`);
+    }
     const data = await this.hoardingsService.create(createHoardingDto, image);
     return {
       statusCode: HttpStatus.CREATED,
@@ -108,8 +112,7 @@ export class HoardingsController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 4 }), // 4MB
-          new FileTypeValidator({ fileType: '.(png|jpeg|jpg)' }),
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 8 }), // 4MB
         ],
         fileIsRequired: false,
       }),
@@ -119,7 +122,14 @@ export class HoardingsController {
     statusCode: number;
     message: string;
     data: Hoarding;
-  }> {
+  }> 
+  {
+    if (image) {
+      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+      if (!allowedMimeTypes.includes(image.mimetype)) {
+         throw new BadRequestException(`Validation failed: Invalid file type. Only JPG, PNG, WEBP, and HEIC are allowed.`);
+      }
+    }
     const data = await this.hoardingsService.update(id, updateHoardingDto, image);
     return {
       statusCode: HttpStatus.OK,
