@@ -4,9 +4,7 @@ import {
   BadRequestException,
   Logger,
   NotFoundException,
-  Inject,
 } from '@nestjs/common';
-import type { LoggerService } from '@nestjs/common'; 
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection } from 'mongoose';
 import { CreateHoardingDto } from './dto/create-hoarding.dto';
@@ -14,25 +12,23 @@ import { UpdateHoardingDto } from './dto/update-hoarding.dto';
 import { Hoarding } from './schemas/hoarding.schema';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { FindInBetweenDto } from './dto/find-in-between.dto';
-import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 
 @Injectable()
 export class HoardingsService {
+  private readonly logger = new Logger(HoardingsService.name);
+
   constructor(
-    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: LoggerService,
     @InjectModel(Hoarding.name) private readonly hoardingModel: Model<Hoarding>,
     private readonly cloudinaryService: CloudinaryService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
-  // From src/hoardings/hoardings.service.ts (Modified for testing)
-async create(
+  async create(
     createHoardingDto: CreateHoardingDto,
     image: Express.Multer.File,
   ): Promise<Hoarding> {
-    
-    // Removed: const session = await this.connection.startSession();
-    // Removed: session.startTransaction();
+    const session = await this.connection.startSession();
+    session.startTransaction();
 
     try {
       const finalDto = { ...createHoardingDto };
@@ -47,31 +43,26 @@ async create(
       const newHoarding = new this.hoardingModel({
         ...finalDto,
         imageUrl: uploadResult.secure_url,
-        publicId: uploadResult.public_id,
         location: {
           type: 'Point',
           coordinates: finalDto.coordinates,
         },
       });
 
-      // Removed: { session } option
-      const savedHoarding = await newHoarding.save(); 
-      // Removed: await session.commitTransaction();
-      
+      const savedHoarding = await newHoarding.save({ session });
+      await session.commitTransaction();
       this.logger.log(`Successfully created hoarding with ID: ${savedHoarding._id}`);
       return savedHoarding;
     } catch (error) {
-      // Removed: await session.abortTransaction();
-      
-      // Changed log message as transaction logic is removed
-      this.logger.error(`Hoarding creation failed outside of transaction.`, error.stack); 
-      
+      await session.abortTransaction();
+      this.logger.error(`Transaction failed for hoarding creation.`, error.stack);
       if (error.name === 'ValidationError') {
         throw new BadRequestException(error.message);
       }
       throw new InternalServerErrorException('Could not create hoarding.');
-    } 
-    // Removed: finally { session.endSession(); }
+    } finally {
+      session.endSession();
+    }
   }
 
  async findAll(search?: string, page: number = 1, limit: number = 5): Promise<{ data: Hoarding[], total: number }> {
@@ -145,14 +136,18 @@ async create(
       const updatePayload: Partial<Hoarding> = { ...updateHoardingDto };
 
       if (image) {
-        if (hoarding.publicId) {
-            await this.cloudinaryService.deleteImage(hoarding.publicId);
+        if (hoarding.imageUrl) {
+          const urlParts = hoarding.imageUrl.split('/');
+          const lastPart = urlParts.pop();
+          if (lastPart) {
+            const publicId = lastPart.split('.')[0];
+            await this.cloudinaryService.deleteImage(`hoardings/${publicId}`);
           }
+        }
         const uploadResult = await this.cloudinaryService.uploadImage(image);
         if (!uploadResult.secure_url) throw new InternalServerErrorException('Image upload failed.');
         
         updatePayload.imageUrl = uploadResult.secure_url;
-        updatePayload.publicId = uploadResult.public_id;
       }
 
       const updatedHoarding = await this.hoardingModel.findByIdAndUpdate(
@@ -181,8 +176,13 @@ async create(
       const hoarding = await this.hoardingModel.findById(id).session(session);
       if (!hoarding) throw new NotFoundException(`Hoarding with ID "${id}" not found`);
 
-      if (hoarding.publicId) {
-          await this.cloudinaryService.deleteImage(hoarding.publicId);
+      if (hoarding.imageUrl) {
+        const urlParts = hoarding.imageUrl.split('/');
+        const lastPart = urlParts.pop();
+        if (lastPart) {
+          const publicId = lastPart.split('.')[0];
+          await this.cloudinaryService.deleteImage(`hoardings/${publicId}`);
+        }
       }
 
       const deletedHoarding = await this.hoardingModel.findByIdAndDelete(id, { session });
