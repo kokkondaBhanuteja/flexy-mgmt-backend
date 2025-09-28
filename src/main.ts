@@ -2,61 +2,65 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-// 👈 New import for ConfigService
-import { ConfigService } from '@nestjs/config'; 
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
-  // 👈 Retrieve ConfigService instance
-  const configService = app.get(ConfigService); 
+  const configService = app.get(ConfigService);
   
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    transform: true,
-  }));
-
-  // --- START CORS CONFIGURATION UPDATE using ConfigService ---
-  // Retrieve the production frontend URL (e.g., https://flexy-mgmt-frontend.vercel.app)
   const frontendUrl = configService.get<string>('FRONTEND_URL');
   
-  // Define allowed origins: localhost for development, FRONTEND_URL for production
-  const allowedOrigins = [
-    'http://localhost:3000',
-    frontendUrl, // Retrieved via ConfigService
-  ].filter(Boolean); // Filter out null/undefined
+  // --- START DYNAMIC CORS FIX ---
+  const whitelist = [
+    frontendUrl,                // Your production URL from .env
+    'http://localhost:3000',    // Your local development URL
+  ];
 
   app.enableCors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      // Check if the origin is in our allowed list
-      if (allowedOrigins.includes(origin)) {
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) {
         return callback(null, true);
       }
       
+      // Check if the origin is in our static whitelist
+      if (whitelist.indexOf(origin) !== -1) {
+        return callback(null, true);
+      }
+      
+      // Check if the origin is a Vercel preview URL for your frontend
+      // This regex checks for URLs like: https://flexy-mgmt-frontend-*.vercel.app
+      const vercelPreviewRegex = /^https:\/\/flexy-mgmt-frontend-.*\.vercel\.app$/;
+      if (vercelPreviewRegex.test(origin)) {
+        return callback(null, true);
+      }
+
       // If the origin is not allowed, reject the request
-      callback(new Error(`Not allowed by CORS from origin: ${origin}`));
+      callback(new Error('Not allowed by CORS'));
     },
     methods: 'GET,PATCH,POST,DELETE',
     credentials: true,
   });
-  // --- END CORS CONFIGURATION UPDATE ---
+  // --- END DYNAMIC CORS FIX ---
+
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+  }));
   
   // Swagger Config
   const config = new DocumentBuilder()
     .setTitle('Hoarding Management API')
     .setDescription('API documentation for managing city hoardings')
     .setVersion('1.0')
-    .addTag('hoardings') // Add a tag for grouping endpoints
+    .addTag('hoardings')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document)
+  SwaggerModule.setup('api', app, document);
   
-  // 👈 Use ConfigService to get the port, defaulting to 8080
-  const port = configService.get<number>('BACKEND_PORT') || 8080;
-  await app.listen(port);
+  app.enableShutdownHooks();
+  
+  await app.listen(configService.get<number>('BACKEND_PORT') || 8080);
 }
 bootstrap();
