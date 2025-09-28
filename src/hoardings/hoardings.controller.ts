@@ -41,10 +41,9 @@ export class HoardingsController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 8 }), // MAX-8MB
-          // Corrected
-         new FileTypeValidator({ fileType: /^image\//i }),
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 3 }), 
         ],
+
       }),
     )
     image: Express.Multer.File,
@@ -110,10 +109,7 @@ export class HoardingsController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 4 }), // 4MB
-          // Corrected
-         new FileTypeValidator({ fileType: /^image\//i }),
         ],
-        fileIsRequired: false,
       }),
     )
     image?: Express.Multer.File,
