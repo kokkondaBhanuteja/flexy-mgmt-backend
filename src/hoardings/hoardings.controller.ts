@@ -41,7 +41,7 @@ export class HoardingsController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 3 }), 
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 4 }), 
         ],
 
       }),
@@ -108,7 +108,7 @@ export class HoardingsController {
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 4 }), // 4MB
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 4 }), 
         ],
       }),
     )
