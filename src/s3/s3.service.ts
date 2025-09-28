@@ -1,3 +1,5 @@
+// src/s3/s3.service.ts
+
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
@@ -13,11 +15,13 @@ export class S3Service {
         const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
         const bucketName = this.configService.get<string>('AWS_S3_BUCKET_NAME');
 
-        // This check ensures that the app will fail to start if the required env vars are missing.
+        // This check ensures the app will fail to start if the required env vars are missing.
+        // This is a crucial runtime safeguard.
         if (!region || !accessKeyId || !secretAccessKey || !bucketName) {
-            throw new InternalServerErrorException('Missing AWS S3 configuration.');
+            throw new InternalServerErrorException('Missing AWS S3 configuration in environment variables.');
         }
 
+        // Because of the check above, TypeScript now knows these variables are strings.
         this.s3 = new S3Client({
             region: region,
             credentials: {
