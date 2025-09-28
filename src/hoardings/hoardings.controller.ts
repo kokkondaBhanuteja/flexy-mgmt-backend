@@ -110,6 +110,7 @@ export class HoardingsController {
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 4 }), 
         ],
+        fileIsRequired: false,
       }),
     )
     image?: Express.Multer.File,
