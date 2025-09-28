@@ -24,24 +24,27 @@ export class HoardingsService {
     private readonly cloudinaryService: CloudinaryService,
     @InjectConnection() private readonly connection: Connection,
   ) { }
-  async create(
+   async create(
     createHoardingDto: CreateHoardingDto,
     image: Express.Multer.File,
   ): Promise<Hoarding> {
-    const session = await this.connection.startSession();
-    this.logger.log('START: Mongoose session started.'); // 🚨 LOG START
+    const context = 'HoardingsService'; // Define context for all logs
 
+    const session = await this.connection.startSession();
+    // FIX: Pass context to resolve TypeError
+    this.logger.log('START: Mongoose session started.', context); 
+    
     session.startTransaction();
-    this.logger.log('STEP 1: Transaction initiated.'); // 🚨 LOG STEP 1
+    this.logger.log('STEP 1: Transaction initiated.', context);
 
     try {
       const finalDto = { ...createHoardingDto };
-
-      this.logger.log('STEP 2: Attempting image upload to Cloudinary.');
+      
+      this.logger.log('STEP 2: Attempting image upload to Cloudinary.', context);
 
       const uploadResult = await this.cloudinaryService.uploadImage(image);
-
-      this.logger.log(`STEP 3: Cloudinary upload successful. Public ID: ${uploadResult.public_id}`); // 🚨 LOG STEP 3
+      
+      this.logger.log(`STEP 3: Cloudinary upload successful. Public ID: ${uploadResult.public_id}`, context);
 
       if (!uploadResult.secure_url) {
         throw new InternalServerErrorException('Image upload failed.');
@@ -57,19 +60,23 @@ export class HoardingsService {
         },
       });
 
-      this.logger.log('STEP 4: Saving new hoarding document to MongoDB.'); // 🚨 LOG STEP 4
-
+      this.logger.log('STEP 4: Saving new hoarding document to MongoDB.', context);
+      
       const savedHoarding = await newHoarding.save({ session });
-
-      this.logger.log('STEP 5: Document saved. Committing transaction.'); // 🚨 LOG STEP 5
+      
+      this.logger.log('STEP 5: Document saved. Committing transaction.', context);
 
       await session.commitTransaction();
-      this.logger.log(`END: Transaction committed successfully for ID: ${savedHoarding._id}`); // 🚨 LOG END SUCCESS
+      this.logger.log(`END: Transaction committed successfully for ID: ${savedHoarding._id}`, context);
       return savedHoarding;
     } catch (error) {
       await session.abortTransaction();
-      this.logger.error('FAILURE: Full error object:', error); // 🚨 LOG FULL ERROR
-      this.logger.error(`Transaction failed for hoarding creation.`, error.stack);
+      
+      // Use console.error to safely log the full error object for debugging
+      console.error("DEBUG - FULL TRANSACTION ERROR DETAILS:", error); 
+      
+      // Use the logger service to log the standard failure message
+      this.logger.error(`Transaction failed for hoarding creation.`, error.stack, context);
 
       if (error.name === 'ValidationError') {
         throw new BadRequestException(error.message);
@@ -77,9 +84,10 @@ export class HoardingsService {
       throw new InternalServerErrorException('Could not create hoarding.');
     } finally {
       session.endSession();
-      this.logger.log('FINAL: Mongoose session ended.'); // 🚨 LOG FINAL
+      this.logger.log('FINAL: Mongoose session ended.', context);
     }
   }
+
 
   async findAll(search?: string, page: number = 1, limit: number = 5): Promise<{ data: Hoarding[], total: number }> {
     const query = {};
