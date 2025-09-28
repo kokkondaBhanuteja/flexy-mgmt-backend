@@ -25,12 +25,14 @@ export class HoardingsService {
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
-  async create(
+  // From src/hoardings/hoardings.service.ts (Modified for testing)
+async create(
     createHoardingDto: CreateHoardingDto,
     image: Express.Multer.File,
   ): Promise<Hoarding> {
-    const session = await this.connection.startSession();
-    session.startTransaction();
+    
+    // Removed: const session = await this.connection.startSession();
+    // Removed: session.startTransaction();
 
     try {
       const finalDto = { ...createHoardingDto };
@@ -52,20 +54,24 @@ export class HoardingsService {
         },
       });
 
-      const savedHoarding = await newHoarding.save({ session });
-      await session.commitTransaction();
+      // Removed: { session } option
+      const savedHoarding = await newHoarding.save(); 
+      // Removed: await session.commitTransaction();
+      
       this.logger.log(`Successfully created hoarding with ID: ${savedHoarding._id}`);
       return savedHoarding;
     } catch (error) {
-      await session.abortTransaction();
-      this.logger.error(`Transaction failed for hoarding creation.`, error.stack);
+      // Removed: await session.abortTransaction();
+      
+      // Changed log message as transaction logic is removed
+      this.logger.error(`Hoarding creation failed outside of transaction.`, error.stack); 
+      
       if (error.name === 'ValidationError') {
         throw new BadRequestException(error.message);
       }
       throw new InternalServerErrorException('Could not create hoarding.');
-    } finally {
-      session.endSession();
-    }
+    } 
+    // Removed: finally { session.endSession(); }
   }
 
  async findAll(search?: string, page: number = 1, limit: number = 5): Promise<{ data: Hoarding[], total: number }> {
