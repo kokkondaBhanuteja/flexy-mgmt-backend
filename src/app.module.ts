@@ -9,6 +9,7 @@ import { MailerModule } from '@nestjs-modules/mailer'; // Import MailerModule
 import { MailController } from './mail.controller';
 import { WinstonModule } from 'nest-winston';
 import { winstonConfig } from './logger/winston.config';
+import { S3Module } from './s3/s3.module';
 
 @Module({
   imports: [
@@ -43,7 +44,7 @@ import { winstonConfig } from './logger/winston.config';
       inject: [ConfigService],
     }),
     HoardingsModule,
-    CloudinaryModule,
+    S3Module,
   ],
   controllers: [AppController, MailController],
   providers: [AppService],

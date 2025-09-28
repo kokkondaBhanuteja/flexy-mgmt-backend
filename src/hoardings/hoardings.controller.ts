@@ -24,6 +24,7 @@ export class HoardingsController {
       data,
     };
   }
+  
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -60,13 +61,25 @@ export class HoardingsController {
   @Get()
   @ApiOperation({ summary: 'Retrieve all hoarding records' })
   @ApiResponse({ status: 200, description: 'Successfully retrieved all hoardings.' })
-
   async findAll(
     @Query('search') search?: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
     @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit?: number,
   ) {
     const data = await this.hoardingsService.findAll(search, page, limit);
+    return {
+      statusCode: HttpStatus.OK,
+      message: 'Hoardings retrieved successfully',
+      data,
+    };
+  }
+
+  @Get('all')
+  @ApiOperation({ summary: 'Retrieve all hoarding records' })
+  @ApiResponse({ status: 200, description: 'Successfully retrieved all hoardings.' })
+  async findAllLocations(
+  ) {
+    const data = await this.hoardingsService.fetchAllLocations();
     return {
       statusCode: HttpStatus.OK,
       message: 'Hoardings retrieved successfully',

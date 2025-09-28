@@ -15,45 +15,46 @@ import { Hoarding } from './schemas/hoarding.schema';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { FindInBetweenDto } from './dto/find-in-between.dto';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { S3Service } from 'src/s3/s3.service';
 
 @Injectable()
 export class HoardingsService {
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: LoggerService,
     @InjectModel(Hoarding.name) private readonly hoardingModel: Model<Hoarding>,
-    private readonly cloudinaryService: CloudinaryService,
+    private readonly s3Service: S3Service, // Inject S3Service
     @InjectConnection() private readonly connection: Connection,
   ) { }
-   async create(
+  async create(
     createHoardingDto: CreateHoardingDto,
     image: Express.Multer.File,
   ): Promise<Hoarding> {
-    const context = 'HoardingsService'; // Define context for all logs
-
+    const context = 'HoardingsService';
     const session = await this.connection.startSession();
-    // FIX: Pass context to resolve TypeError
-    this.logger.log('START: Mongoose session started.', context); 
-    
+    this.logger.log('START: Mongoose session started.', context);
+
     session.startTransaction();
     this.logger.log('STEP 1: Transaction initiated.', context);
 
     try {
       const finalDto = { ...createHoardingDto };
-      
-      this.logger.log('STEP 2: Attempting image upload to Cloudinary.', context);
 
-      const uploadResult = await this.cloudinaryService.uploadImage(image);
-      
-      this.logger.log(`STEP 3: Cloudinary upload successful. Public ID: ${uploadResult.public_id}`, context);
+      this.logger.log('STEP 2: Attempting image upload to S3.', context);
 
-      if (!uploadResult.secure_url) {
+      // --- CHANGE FOR S3 ---
+      const uploadResult = await this.s3Service.uploadImage(image);
+
+      this.logger.log(`STEP 3: S3 upload successful. Key: ${uploadResult.Key}`, context);
+
+      if (!uploadResult.Location) {
         throw new InternalServerErrorException('Image upload failed.');
       }
 
       const newHoarding = new this.hoardingModel({
         ...finalDto,
-        imageUrl: uploadResult.secure_url,
-        publicId: uploadResult.public_id,
+        // --- CHANGE FOR S3 ---
+        imageUrl: uploadResult.Location, // Use Location for the full URL
+        publicId: uploadResult.Key,      // Use Key for the object identifier
         location: {
           type: 'Point',
           coordinates: finalDto.coordinates,
@@ -61,9 +62,9 @@ export class HoardingsService {
       });
 
       this.logger.log('STEP 4: Saving new hoarding document to MongoDB.', context);
-      
+
       const savedHoarding = await newHoarding.save({ session });
-      
+
       this.logger.log('STEP 5: Document saved. Committing transaction.', context);
 
       await session.commitTransaction();
@@ -71,11 +72,7 @@ export class HoardingsService {
       return savedHoarding;
     } catch (error) {
       await session.abortTransaction();
-      
-      // Use console.error to safely log the full error object for debugging
-      console.error("DEBUG - FULL TRANSACTION ERROR DETAILS:", error); 
-      
-      // Use the logger service to log the standard failure message
+      console.error("DEBUG - FULL TRANSACTION ERROR DETAILS:", error);
       this.logger.error(`Transaction failed for hoarding creation.`, error.stack, context);
 
       if (error.name === 'ValidationError') {
@@ -88,7 +85,14 @@ export class HoardingsService {
     }
   }
 
-
+  async fetchAllLocations(){
+    const hoarding = await this.hoardingModel.find().exec();
+    if (!hoarding) {
+      throw new NotFoundException(`Hoardings not found`);
+    }
+    return hoarding; 
+  }
+  
   async findAll(search?: string, page: number = 1, limit: number = 5): Promise<{ data: Hoarding[], total: number }> {
     const query = {};
     if (search) {
@@ -121,7 +125,7 @@ export class HoardingsService {
   }
 
   async findInBetween(findInBetweenDto: FindInBetweenDto): Promise<Hoarding[]> {
-    const { source, destination,  radius = 2} = findInBetweenDto;
+    const { source, destination, radius = 2 } = findInBetweenDto;
     const [lon1, lat1] = source;
     const [lon2, lat2] = destination;
 
@@ -161,13 +165,16 @@ export class HoardingsService {
 
       if (image) {
         if (hoarding.publicId) {
-          await this.cloudinaryService.deleteImage(hoarding.publicId);
+          // The publicId is now the S3 Key
+          await this.s3Service.deleteImage(hoarding.publicId);
         }
-        const uploadResult = await this.cloudinaryService.uploadImage(image);
-        if (!uploadResult.secure_url) throw new InternalServerErrorException('Image upload failed.');
+        // --- CHANGE FOR S3 ---
+        const uploadResult = await this.s3Service.uploadImage(image);
+        if (!uploadResult.Location) throw new InternalServerErrorException('Image upload failed.');
 
-        updatePayload.imageUrl = uploadResult.secure_url;
-        updatePayload.publicId = uploadResult.public_id;
+        // --- CHANGE FOR S3 ---
+        updatePayload.imageUrl = uploadResult.Location; // Use Location for the full URL
+        updatePayload.publicId = uploadResult.Key;      // Use Key for the object identifier
       }
 
       const updatedHoarding = await this.hoardingModel.findByIdAndUpdate(
@@ -197,7 +204,8 @@ export class HoardingsService {
       if (!hoarding) throw new NotFoundException(`Hoarding with ID "${id}" not found`);
 
       if (hoarding.publicId) {
-        await this.cloudinaryService.deleteImage(hoarding.publicId);
+        // The publicId is now the S3 Key
+        await this.s3Service.deleteImage(hoarding.publicId);
       }
 
       const deletedHoarding = await this.hoardingModel.findByIdAndDelete(id, { session });
