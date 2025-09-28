@@ -5,18 +5,18 @@
       "src": "src/main.ts",
       "use": "@vercel/node",
       "config": {
-        "maxLambdaSize": "40mb"
-      }
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "outputDirectory": "build"
+        "maxLambdaSize": "40mb",
+        
+        "includeFiles": ["dist/**", "node_modules/**"] 
       }
     }
+  
   ],
   "routes": [
+    {
+      "src": "/",
+      "dest": "src/main.ts"
+    },
     {
       "src": "/hoardings/(.*)",
       "dest": "src/main.ts"
@@ -25,11 +25,12 @@
       "src": "/mail/(.*)",
       "dest": "src/main.ts"
     },
+
     {
-      "src": "/(.*)",
-      "dest": "/$1"
+      "src": "/api/(.*)",
+      "dest": "src/main.ts"
     }
   ],
-  "installCommand": "npm install --force",
+  "installCommand": "npm install",
   "buildCommand": "npm run build" 
 }
