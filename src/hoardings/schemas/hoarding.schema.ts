@@ -50,6 +50,9 @@ export class Hoarding extends Document {
 
   @Prop()
   imageUrl: string; 
+  
+  @Prop()
+  publicId: string;
 
   @Prop()
   notes?: string;

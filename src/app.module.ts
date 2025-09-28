@@ -7,10 +7,12 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { MailerModule } from '@nestjs-modules/mailer'; // Import MailerModule
 import { MailController } from './mail.controller';
-
+import { WinstonModule } from 'nest-winston';
+import { winstonConfig } from './logger/winston.config';
 
 @Module({
   imports: [
+    WinstonModule.forRoot(winstonConfig),
     ConfigModule.forRoot({
       isGlobal: true,
     }),
