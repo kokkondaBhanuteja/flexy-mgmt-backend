@@ -121,7 +121,7 @@ export class HoardingsService {
   }
 
   async findInBetween(findInBetweenDto: FindInBetweenDto): Promise<Hoarding[]> {
-    const { source, destination } = findInBetweenDto;
+    const { source, destination,  radius = 2} = findInBetweenDto;
     const [lon1, lat1] = source;
     const [lon2, lat2] = destination;
 
@@ -129,7 +129,7 @@ export class HoardingsService {
     const midLon = (lon1 + lon2) / 2;
     const midLat = (lat1 + lat2) / 2;
 
-    const radiusInKm = 15; // 15km proximity
+    // const radiusInKm = 15; // 15km proximity
 
     return this.hoardingModel.find({
       location: {
@@ -138,7 +138,7 @@ export class HoardingsService {
             type: 'Point',
             coordinates: [midLon, midLat],
           },
-          $maxDistance: radiusInKm * 1000, // convert km to meters
+          $maxDistance: radius * 1000, // convert km to meters
         },
       },
     });

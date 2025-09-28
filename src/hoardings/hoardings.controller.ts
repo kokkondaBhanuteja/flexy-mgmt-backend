@@ -15,7 +15,8 @@ export class HoardingsController {
   @Post('find-in-between')
   @ApiOperation({ summary: 'Find hoardings between two points' })
   @ApiResponse({ status: 200, description: 'Successfully retrieved hoardings.' })
-  async findInBetween(@Body() findInBetweenDto: FindInBetweenDto) {
+  async findInBetween(@Body() findInBetweenDto: FindInBetweenDto ) 
+  {
     const data = await this.hoardingsService.findInBetween(findInBetweenDto);
     return {
       statusCode: HttpStatus.OK,
