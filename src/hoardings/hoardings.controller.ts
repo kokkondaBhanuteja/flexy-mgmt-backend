@@ -42,7 +42,7 @@ export class HoardingsController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 8 }), // MAX-8MB
-            new FileTypeValidator({ fileType: `/(jpg|jpeg|png|webp|heic)$/` }),
+          new FileTypeValidator({ fileType: /jpg|jpeg|png|webp|heic/ }),
         ],
       }),
     )
